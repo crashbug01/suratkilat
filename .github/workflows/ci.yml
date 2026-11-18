@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Pint, Larastan, Pest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Siapkan PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'   # Laravel 13 butuh PHP 8.3+; sesuaikan dengan hasil cek hari 1
+          extensions: mbstring, dom, fileinfo, sqlite3, pdo_sqlite, gd, intl
+          coverage: none
+
+      - name: Siapkan Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+
+      - name: Pasang dependensi PHP
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Pasang dan bangun aset
+        run: |
+          npm ci
+          npm run build
+
+      - name: Siapkan environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Pint (gaya kode)
+        run: vendor/bin/pint --test
+
+      - name: Larastan (analisis statis)
+        run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+
+      - name: Pest (tes)
+        run: vendor/bin/pest --ci
